@@ -1,0 +1,150 @@
+Speckit Constitution
+
+Purpose
+
+This constitution captures the software engineering principles, tooling, and enforceable acceptance criteria for services in this repository. It is intentionally pragmatic — short, testable, and machine-checkable where possible.
+
+Core Principles (high level)
+
+1. SOLID
+- Single Responsibility: classes and services have one reason to change.
+- Open/Closed: prefer extension via interfaces/strategies rather than modification.
+- Liskov Substitution: abstractions must be safely replaceable by implementations.
+- Interface Segregation: keep small, focused interfaces.
+- Dependency Inversion: depend on abstractions; inject concrete implementations.
+
+Acceptance criteria
+- Code reviews reference which SOLID rules are relevant for any large change.
+- New modules show dependency injection and small interfaces in implementation and tests.
+
+2. Hexagonal (Ports & Adapters) Architecture
+- Separate core domain (use cases, service layer, DTOs) from infrastructure (persistence, messaging, HTTP clients).
+- Define clear ports (interfaces) at the core boundary and implement adapters for frameworks and external systems.
+
+Acceptance criteria
+- No direct framework or I/O calls from domain/service classes; adapters wrap frameworks.
+- Unit tests mock ports; integration tests validate adapters.
+
+3. Prefer WebClient over RestTemplate (Spring)
+- Use reactive or non-blocking HTTP via Spring WebClient for external HTTP calls.
+- If a blocking call is required, wrap or isolate it in an adapter layer and document why.
+
+Acceptance criteria
+- New HTTP clients implemented with `WebClient`. Any `RestTemplate` must be documented and justified in a PR.
+
+4. Use UUIDs as public identifiers
+- Use UUIDv4 (or provably unique UUID strategy) for public entity IDs to avoid data leak through sequential IDs.
+- Internal DB surrogate keys may remain numeric, but public API models should use UUIDs.
+
+Acceptance criteria
+- API contracts show UUID types for external IDs.
+- Converters/DTOs map internal keys to UUID strings consistently.
+
+5. Bean Validation (Jakarta Validation)
+- Validate incoming API models using Bean Validation annotations and custom validators where necessary.
+- Fail fast with clear error payloads containing machine-readable codes and human-friendly messages.
+
+Acceptance criteria
+- Controllers/handlers validate payloads; validation errors are returned with structured problem details (RFC 7807 or similar).
+
+6. Unit tests with Mockito & AssertJ
+- Unit tests are fast, deterministic, and mock external dependencies using Mockito (or Mockito-Kotlin) and assert using AssertJ for fluent assertions.
+- Tests cover happy path and important edge cases.
+
+Acceptance criteria
+- Unit test modules use Mockito for mocks/stubs and AssertJ for assertions.
+- Each service class has unit tests covering normal and edge behaviors.
+
+7. Integration tests with WireMock
+- External HTTP dependencies are verified using WireMock (standalone or JUnit extension) to simulate partner APIs.
+- Integration tests run in CI and are isolated from network.
+
+Acceptance criteria
+- Integration tests stub external endpoints with WireMock and verify retry, timeouts, and error handling behavior.
+
+8. Coverage target: 80%+ line and branch coverage on service layer
+- Service-layer (business logic/use-case) code must have at least 80% line and branch coverage.
+- Coverage tools: JaCoCo (Maven/Gradle), coverage reports published by CI and checked against thresholds.
+
+Acceptance criteria
+- CI fails the build if service-layer coverage < 80% (both line and branch).
+- Pull requests include coverage delta and list of uncovered service classes if threshold not met.
+
+9. Security basics
+- Apply principle of least privilege across services and dependencies.
+- Validate and sanitize inputs, apply proper output encoding where relevant.
+- Use TLS for all external communication; verify certificates or use mTLS where required.
+- Secrets must be stored in environment/secret stores, not in source control.
+- Prefer established auth patterns: OAuth2/JWT for API authentication; verify tokens and claims.
+- Rate-limit abusive callers and implement basic DDOS mitigations (timeouts, circuit breakers) at HTTP client/adapters.
+
+Acceptance criteria
+- No plaintext secrets in repo; token/credential usage replaced by environment variables/config maps.
+- Security considerations section added to PRs for changes affecting auth, transport, or sensitive data flows.
+
+10. Reproducible builds
+- Build tool: prefer Maven or Gradle with pinned plugin versions and a lockfile where supported.
+- CI must do a fresh checkout and a clean build — artifacts should be reproducible from the same source+lockfile.
+- Publish checksums for produced artifacts or rely on immutable container images with pinned base images.
+
+Acceptance criteria
+- Provide `mvn -B -DskipTests package` or `gradlew build` examples in README with locked versions.
+- CI uses cached dependencies but must be able to reproduce artifacts from scratch.
+
+11. Style and formatting via Spotless
+- Use Spotless to enforce consistent formatting, license headers, and simple style rules.
+- Apply a team-preferred formatter (google-java-format, prettier for front-end JSON/openapi) in Spotless.
+
+Acceptance criteria
+- CI runs `spotless:check` (Maven) or `spotlessCheck` (Gradle) and fails on violations.
+- Reformatting captured in a chore PR or via automatic formatting before merge.
+
+12. Accessibility in API documentation
+- API docs (OpenAPI / Swagger) must include accessibility considerations for API consumers and UI clients.
+- Document error messages, suggested labels, recommended ARIA-like semantics for UIs consuming APIs, and sample payloads that demonstrate accessible content (clear error codes, friendly messages, and machine-readable fields for assistive technologies).
+
+Acceptance criteria
+- OpenAPI docs contain an `/accessibility` component or a dedicated section describing accessibility considerations.
+- Example responses include `title`, `detail`, and `code` fields and guidance on constructing accessible messages.
+
+Enforcement and CI recommendations
+- CI jobs (recommended):
+  - build: compile
+  - unit: run unit tests + JaCoCo
+  - integration: run integration tests with WireMock in isolated profile
+  - style: run Spotless check
+  - coverage: publish coverage and enforce thresholds
+  - security scan: static analysis and dependency scanning
+
+- Example thresholds and tools:
+  - JaCoCo for coverage with rule at 80% line and branch on service package
+  - Spotless for formatting
+  - OWASP Dependency-Check or Snyk for dependency vulnerabilities
+  - Git hooks / pre-commit for Spotless auto-fix and simple checks
+
+Developer workflow (recommended)
+- Local: run formatter, unit tests, and Spotless before committing.
+- PRs: include description of how SOLID/hexagonal principles were preserved and list security considerations.
+- Reviewers: verify tests exist, run coverage badge locally if needed, and confirm WebClient usage for external HTTP calls.
+
+Minimal checklist for PRs
+- [ ] Unit tests added/updated (Mockito + AssertJ)
+- [ ] Service-layer coverage >= 80% (line & branch) or justification included
+- [ ] Integration tests for adapters using WireMock (if adapter changes)
+- [ ] No secrets in changes
+- [ ] Spotless check passes
+- [ ] API docs updated, including accessibility notes where relevant
+- [ ] Security considerations documented in PR description
+
+Appendix: quick config pointers
+- WebClient: prefer Spring WebClient builder, centralize configuration (timeouts, retries, circuit breakers) in an adapter factory.
+- Bean Validation: use `@Valid` on controller params and a global exception handler to convert ConstraintViolationException to RFC7807 problem details.
+- Mockito + AssertJ: use `@ExtendWith(MockitoExtension.class)` and `BDDMockito` style if preferred; use AssertJ's `assertThat` fluent API.
+- WireMock: use JUnit 5 WireMockExtension or standalone WireMock for contract-like integration tests.
+- JaCoCo (Maven) snippet: configure `jacoco-maven-plugin` with `check` goal and rules targeting service packages.
+- Spotless: include formatting rules in `pom.xml` or `build.gradle` and run `mvn spotless:apply` or `gradlew spotlessApply` locally.
+
+Closing
+
+This document is intentionally prescriptive and minimal: it states what we expect and how to check it automatically. Follow it in code, CI, and reviews. When exceptions are necessary, document them in the PR and create a short, testable mitigation plan.
+
